@@ -502,7 +502,7 @@ def matches(meta: Dict, query: str, regex: Optional[re.Pattern], exact: bool,
                 if exact:
                     if term_use in hay_tokens:
                         term_found = True
-                else:  # <<<< SURGICAL FIX START >>>>
+                else:
                     pattern = ''
                     # If the term is http or https, add a negative lookahead to exclude URLs
                     if term_use in ('http', 'https'):
@@ -514,7 +514,6 @@ def matches(meta: Dict, query: str, regex: Optional[re.Pattern], exact: bool,
                     
                     if re.search(pattern, hay_use):
                         term_found = True
-                # <<<< SURGICAL FIX END >>>>
                 
                 if not term_found:
                     group_match = False
@@ -716,17 +715,21 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
 
     if fmt == "xml":
         from xml.etree.ElementTree import Element, SubElement, tostring
+        from xml.dom import minidom
         root = Element("results")
         for obj in objs:
             e = SubElement(root, "row")
             for k, v in obj.items():
                 child = SubElement(e, k.replace(" ", "_").lower())
-                v = str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
-                child.text = v
-        try:
-            text = tostring(root, encoding="unicode")
-        except Exception:
-            text = tostring(root, encoding="utf-8").decode("utf-8")
+                child.text = str(v)
+        
+        # Convert the ElementTree to a string, then parse and pretty-print with minidom
+        rough_string = tostring(root, 'utf-8')
+        reparsed = minidom.parseString(rough_string)
+        pretty_xml = reparsed.toprettyxml(indent="  ")
+        
+        # Clean up extra newlines that minidom can add
+        text = "\n".join([line for line in pretty_xml.split('\n') if line.strip()])
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
 
     return tabulate(rows, headers=headers)
@@ -759,15 +762,21 @@ def _format_paths(paths: List[str], fmt: str, color_opt: str, terms_re: Optional
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
     if fmt == "xml":
         from xml.etree.ElementTree import Element, SubElement, tostring
+        from xml.dom import minidom 
         root = Element("paths")
         for pth in paths:
             child = SubElement(root, "path")
-            child.text = pth.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
-        try:
-            text = tostring(root, encoding="unicode")
-        except Exception:
-            text = tostring(root, encoding="utf-8").decode("utf-8")
+            child.text = pth
+        
+        # Convert the ElementTree to a string, then parse and pretty-print with minidom
+        rough_string = tostring(root, 'utf-8')
+        reparsed = minidom.parseString(rough_string)
+        pretty_xml = reparsed.toprettyxml(indent="  ")
+        
+        # Clean up extra newlines that minidom can add
+        text = "\n".join([line for line in pretty_xml.split('\n') if line.strip()])
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
+        
     rows = [[p] for p in paths]
     return tabulate(rows, headers=["Path"])
 
@@ -1270,7 +1279,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         else:
             try:
-                # Using shell=False and passing a list of args is the correct, safe way to call subprocesses.
                 result = subprocess.run(cmd_list, shell=False, capture_output=True, text=True, check=False)
                 output = result.stdout + result.stderr
                 write_output(output, args.out, args.append, args.quiet)
