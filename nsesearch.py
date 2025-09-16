@@ -41,6 +41,9 @@ BANNER = r"""
 
 """
 
+# --- Constants ---
+DEFAULT_DESC_TRUNCATE_LEN = 300
+
 # --- Cache and config locations ---
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "nsesearchrc.json"
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "nsesearch"
@@ -594,8 +597,6 @@ def _render_table_4col(rows: List[List[str]], headers: List[str], max_width: int
     caps = [32, 32, 9999, 60]
     total_min_width = sum(mins) + (2 * (len(mins) - 1))
     
-    # If the requested width is too small for our preferred proportions,
-    # fall back to a generic, equal-width distribution.
     if max_width < total_min_width:
         return _render_table_generic(rows, headers, max_width)
 
@@ -657,7 +658,6 @@ def tabulate(rows: List[List[str]], headers: List[str]) -> str:
 def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt: str, terms_re: Optional[re.Pattern]) -> str:
     fmt = (fmt or "table").lower()
     if fmt == "table":
-        # The `max_width` logic is now handled inside the tabulate function
         return tabulate(rows, headers=headers)
 
     objs = [{headers[i]: (row[i] if i < len(row) else "") for i in range(len(headers))} for row in rows]
@@ -679,26 +679,15 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
             for i, (key, value) in enumerate(obj.items()):
                 value_str = str(value)
                 line = ""
-                # Use literal block scalar `|` for multiline strings for readability
                 if "\n" in value_str:
-                    # Indent the multiline value block correctly under its key
-                    indented_value = textwrap.indent(value_str, "    ")
-                    line = f"  {key}:\n{indented_value}"
-                    # A better style for multiline is using the literal block scalar
                     line = f"  {key}: |-\n{textwrap.indent(value_str, '    ')}"
                 else:
-                    # For single-line values, use JSON dumps to safely quote special characters
                     final_value = json.dumps(value_str)
                     line = f"  {key}: {final_value}"
-
-                # The very first line of the object representation gets the list marker `-`
                 if i == 0:
-                    # Replace the first two spaces of indentation with "- "
                     line = f"- {line.lstrip()}"
-                
                 item_lines.append(line)
             output_lines.extend(item_lines)
-            
         text = "\n".join(output_lines)
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
 
@@ -722,13 +711,9 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
             for k, v in obj.items():
                 child = SubElement(e, k.replace(" ", "_").lower())
                 child.text = str(v)
-        
-        # Convert the ElementTree to a string, then parse and pretty-print with minidom
         rough_string = tostring(root, 'utf-8')
         reparsed = minidom.parseString(rough_string)
         pretty_xml = reparsed.toprettyxml(indent="  ")
-        
-        # Clean up extra newlines that minidom can add
         text = "\n".join([line for line in pretty_xml.split('\n') if line.strip()])
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
 
@@ -761,75 +746,40 @@ def _format_paths(paths: List[str], fmt: str, color_opt: str, terms_re: Optional
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
     if fmt == "xml":
         from xml.etree.ElementTree import Element, SubElement, tostring
-        from xml.dom import minidom 
+        from xml.dom import minidom
         root = Element("paths")
         for pth in paths:
             child = SubElement(root, "path")
             child.text = pth
-        
-        # Convert the ElementTree to a string, then parse and pretty-print with minidom
         rough_string = tostring(root, 'utf-8')
         reparsed = minidom.parseString(rough_string)
         pretty_xml = reparsed.toprettyxml(indent="  ")
-        
-        # Clean up extra newlines that minidom can add
         text = "\n".join([line for line in pretty_xml.split('\n') if line.strip()])
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
-        
+    # Fallback for any other format
     rows = [[p] for p in paths]
     return tabulate(rows, headers=["Path"])
 
 # Service-to-port hints (expanded)
 SERVICE_PORTS = {
-    "http": {80, 81, 82, 88, 8000, 8008, 8080, 8081, 8088, 8888},
-    "https": {443, 8443, 9443},
-    "ssl": {443, 8443, 9443},
-    "tls": {443, 8443, 9443},
-    "smb": {139, 445},
-    "microsoft-ds": {445},
-    "mysql": {3306},
-    "mssql": {1433, 1434},
-    "postgres": {5432},
-    "postgresql": {5432},
-    "oracle": {1521},
-    "tns": {1521},
-    "redis": {6379},
-    "memcached": {11211},
-    "mongodb": {27017},
-    "ssh": {22},
-    "telnet": {23},
-    "ftp": {21},
-    "dns": {53},
-    "ntp": {123},
-    "smtp": {25, 465, 587, 2525},
-    "pop3": {110, 995},
-    "imap": {143, 993},
-    "rdp": {3389},
-    "vnc": {5900},
-    "snmp": {161, 162},
-    "ldap": {389, 636},
-    "rpc": {111},
-    "jdwp": {8000, 5005, 8787},
-    "rtsp": {554},
-    "sip": {5060, 5061},
-    "amqp": {5672, 5671},
-    "coap": {5683, 5684},
-    "nfs": {2049},
-    "kubernetes": {6443},
-    "docker": {2375, 2376},
-    "elasticsearch": {9200, 9300},
-    "rabbitmq": {5672, 15672},
+    "http": {80, 81, 82, 88, 8000, 8008, 8080, 8081, 8088, 8888}, "https": {443, 8443, 9443},
+    "ssl": {443, 8443, 9443}, "tls": {443, 8443, 9443}, "smb": {139, 445},
+    "microsoft-ds": {445}, "mysql": {3306}, "mssql": {1433, 1434}, "postgres": {5432},
+    "postgresql": {5432}, "oracle": {1521}, "tns": {1521}, "redis": {6379},
+    "memcached": {11211}, "mongodb": {27017}, "ssh": {22}, "telnet": {23}, "ftp": {21},
+    "dns": {53}, "ntp": {123}, "smtp": {25, 465, 587, 2525}, "pop3": {110, 995},
+    "imap": {143, 993}, "rdp": {3389}, "vnc": {5900}, "snmp": {161, 162}, "ldap": {389, 636},
+    "rpc": {111}, "jdwp": {8000, 5005, 8787}, "rtsp": {554}, "sip": {5060, 5061},
+    "amqp": {5672, 5671}, "coap": {5683, 5684}, "nfs": {2049}, "kubernetes": {6443},
+    "docker": {2375, 2376}, "elasticsearch": {9200, 9300}, "rabbitmq": {5672, 15672},
 }
 
 def _name_service_hints(name: str) -> List[str]:
     pre = (name or "").split("-", 1)[0].lower()
     hints = []
-    if pre in SERVICE_PORTS:
-        hints.append(pre)
-    if pre == "https":
-        hints.extend(["https", "ssl", "http"])
-    if pre.startswith("http"):
-        hints.append("http")
+    if pre in SERVICE_PORTS: hints.append(pre)
+    if pre == "https": hints.extend(["https", "ssl", "http"])
+    if pre.startswith("http"): hints.append("http")
     if pre.startswith("ssl") or pre.startswith("tls") or pre.startswith("https"):
         hints.extend(["ssl", "tls", "https"])
     return sorted(set(hints))
@@ -841,37 +791,30 @@ def _ports_for_services(services: List[str]) -> set:
     return ports
 
 def _parse_ports_arg(ports_arg: str) -> Optional[set]:
-    if not ports_arg:
-        return None
+    if not ports_arg: return None
     result = set()
     for part in ports_arg.split(","):
         part = part.strip()
-        if not part:
-            continue
+        if not part: continue
         if "-" in part:
             try:
-                a, b = part.split("-", 1)
-                a, b = int(a), int(b)
+                a, b = map(int, part.split("-", 1))
                 if not (0 < a <= 65535 and 0 < b <= 65535):
                     print(f"[!] Warning: Invalid port range {part} (ports must be 1-65535)", file=sys.stderr)
                     continue
                 if b - a > 10000:
                     print(f"[!] Warning: Port range {part} too large (>10000)", file=sys.stderr)
                     continue
-                result.update(range(a, b+1))
+                result.update(range(a, b + 1))
             except Exception:
                 print(f"[!] Warning: Invalid port range {part}", file=sys.stderr)
-                continue
         else:
             try:
                 n = int(part)
-                if 0 < n <= 65535:
-                    result.add(n)
-                else:
-                    print(f"[!] Warning: Invalid port {part} (must be 1-65535)", file=sys.stderr)
+                if 0 < n <= 65535: result.add(n)
+                else: print(f"[!] Warning: Invalid port {part} (must be 1-65535)", file=sys.stderr)
             except Exception:
                 print(f"[!] Warning: Invalid port {part}", file=sys.stderr)
-                continue
     return result or None
 
 def _script_matches_ports(meta: Dict, user_ports: set) -> bool:
@@ -885,20 +828,13 @@ def _script_matches_ports(meta: Dict, user_ports: set) -> bool:
 # ---------------- Categories ----------------
 
 CATEGORIES_INFO = {
-    "info": "Informational checks; print general host/service details.",
-    "auth": "Authentication checks; identify/bypass auth.",
-    "broadcast": "Discovery via broadcast.",
-    "brute": "Brute-force credential guessing.",
-    "default": "Safe, useful defaults.",
-    "discovery": "Gather target/network/service info.",
-    "dos": "Denial-of-Service tests; may disrupt.",
-    "exploit": "Actively exploit known vulnerabilities.",
-    "external": "Uses external resources/services.",
-    "fuzzer": "Protocol fuzzing for robustness testing.",
-    "intrusive": "May be disruptive or against policy.",
-    "malware": "Detect malware/backdoors/IOCs.",
-    "safe": "Designed to be non-intrusive.",
-    "version": "Assist/refine version detection.",
+    "info": "Informational checks; print general host/service details.", "auth": "Authentication checks; identify/bypass auth.",
+    "broadcast": "Discovery via broadcast.", "brute": "Brute-force credential guessing.",
+    "default": "Safe, useful defaults.", "discovery": "Gather target/network/service info.",
+    "dos": "Denial-of-Service tests; may disrupt.", "exploit": "Actively exploit known vulnerabilities.",
+    "external": "Uses external resources/services.", "fuzzer": "Protocol fuzzing for robustness testing.",
+    "intrusive": "May be disruptive or against policy.", "malware": "Detect malware/backdoors/IOCs.",
+    "safe": "Designed to be non-intrusive.", "version": "Assist/refine version detection.",
     "vuln": "Check and report known vulnerabilities.",
 }
 
@@ -907,7 +843,7 @@ CATEGORIES_INFO = {
 def render_results(matches_list: List[Dict], paths_only: bool, deps_only: bool, *,
                    color_opt: str = "auto",
                    terms_regex: Optional[re.Pattern] = None, regex: Optional[re.Pattern] = None,
-                   out_format: str = "table") -> str:
+                   out_format: str = "table", verbose: bool = False) -> str:
     out_format = (out_format or "table").lower()
     if deps_only:
         rows = [[m["name"], ",".join(m.get("dependencies", []) or []) or "-"] for m in matches_list]
@@ -923,41 +859,35 @@ def render_results(matches_list: List[Dict], paths_only: bool, deps_only: bool, 
         path = m["path"]
         cats = ",".join(m.get("categories", []) or []) or "-"
         desc = strip_html((m.get("description", "") or "-").strip())
+        
+        if not verbose and len(desc) > DEFAULT_DESC_TRUNCATE_LEN:
+            desc = desc[:DEFAULT_DESC_TRUNCATE_LEN] + "..."
+
         rows.append([name, cats, desc, path])
 
-    # Highlight matches in table output
     if out_format == "table" and _should_color(color_opt):
-        # The main highlight should be from the user's search query terms
         if terms_regex:
             for row in rows:
-                for i in range(len(row)):
-                    row[i] = highlight_text(row[i], terms_regex, True)
-        # Also highlight the specific regex if provided
+                for i in range(len(row)): row[i] = highlight_text(row[i], terms_regex, True)
         if regex:
             for row in rows:
-                for i in range(len(row)):
-                    row[i] = highlight_text(row[i], regex, True)
+                for i in range(len(row)): row[i] = highlight_text(row[i], regex, True)
 
     return _format_rows(rows, ["Script", "Categories", "Description", "Path"], out_format, color_opt, terms_regex)
 
 def open_script(idx: Dict, name_or_path: str) -> Optional[Path]:
-    # Handles both a direct path and a script name from the index
     p = Path(name_or_path)
-    if p.exists() and name_or_path.endswith(".nse"):
-        return p
+    if p.exists() and name_or_path.endswith(".nse"): return p
     meta = idx["scripts"].get(p.stem)
-    if meta:
-        return Path(meta["path"])
+    if meta: return Path(meta["path"])
     return None
 
 def build_nmap_command(matches_list: List[Dict], target: str, script_args: Optional[str], ports: Optional[str]) -> List[str]:
     names = ",".join(sorted(m["name"] for m in matches_list))
     parts = ["nmap"]
-    if ports:
-        parts.extend(["-p", ports])
+    if ports: parts.extend(["-p", ports])
     parts.extend(["--script", names])
-    if script_args:
-        parts.extend(["--script-args", script_args])
+    if script_args: parts.extend(["--script-args", script_args])
     parts.append(target)
     return parts
 
@@ -966,31 +896,16 @@ def diff_scripts(script1: Path, script2: Path, color_opt: str = "auto") -> str:
         text1 = script1.read_text(encoding="utf-8", errors="replace").splitlines()
         text2 = script2.read_text(encoding="utf-8", errors="replace").splitlines()
         diff_lines = list(difflib.unified_diff(text1, text2, fromfile=str(script1), tofile=str(script2)))
-
-        if not _should_color(color_opt) or not diff_lines:
-            return "\n".join(diff_lines)
-
+        if not _should_color(color_opt) or not diff_lines: return "\n".join(diff_lines)
         colorized_lines = []
-        # A unified diff always has at least two header lines.
-        # We treat them specially to avoid ambiguity with content lines that
-        # might also start with '---' or '+++'.
-        if len(diff_lines) > 0:
-            colorized_lines.append(diff_lines[0]) # --- file_a
-        if len(diff_lines) > 1:
-            colorized_lines.append(diff_lines[1]) # +++ file_b
-
-        # Process the rest of the lines based on their mandatory prefix.
+        if len(diff_lines) > 0: colorized_lines.append(diff_lines[0])
+        if len(diff_lines) > 1: colorized_lines.append(diff_lines[1])
         for line in diff_lines[2:]:
             if not line: continue
-            if line.startswith('+'):
-                colorized_lines.append(f"{GREEN}{line}{RESET}")
-            elif line.startswith('-'):
-                colorized_lines.append(f"{RED}{line}{RESET}")
-            elif line.startswith('@@'):
-                colorized_lines.append(f"{CYAN}{line}{RESET}")
-            else:
-                # This case handles context lines, which start with a space.
-                colorized_lines.append(line)
+            if line.startswith('+'): colorized_lines.append(f"{GREEN}{line}{RESET}")
+            elif line.startswith('-'): colorized_lines.append(f"{RED}{line}{RESET}")
+            elif line.startswith('@@'): colorized_lines.append(f"{CYAN}{line}{RESET}")
+            else: colorized_lines.append(line)
         return "\n".join(colorized_lines)
     except Exception as e:
         return f"[!] Error generating diff: {e}"
@@ -1013,44 +928,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
   # Search (space = AND, use OR for alternatives)
   {APP_NAME} http wordpress
-  {APP_NAME} "http brute OR ftp brute"
 
-  # Regex search (case-sensitive with --case-sensitive)
-  {APP_NAME} -r "(?i)ftpd.*backdoor"
+  # Show full descriptions for long results
+  {APP_NAME} --verbose http
 
-  # Filter by category, author, service, port
-  {APP_NAME} -c vuln -a "hdm" --service http --port 80,443
-  {APP_NAME} -c vuln --exclude-categories intrusive
-
-  # List categories with descriptions and counts
-  {APP_NAME} --list-categories
-
-  # Show a script with Lua syntax highlighting
-  {APP_NAME} --show http-title
-
-  # Copy a script or diff two scripts with colorized output
-  {APP_NAME} --copy http-title
-  {APP_NAME} --diff http-title /path/to/http-title.nse
-
-  # Show dependencies for matching scripts
-  {APP_NAME} http-vuln --deps
+  # Get a clean list of paths for piping
+  {APP_NAME} --paths-only http-enum | xargs cp -t ./http_scripts/
 
   # Generate/run nmap command
-  {APP_NAME} --run 8.8.8.8 --ports 80 -c vuln
+  {APP_NAME} --run 8.8.8.8 -c vuln --ports 80,443
   {APP_NAME} --exec 8.8.8.8 http --ports 80 --script-args "useragent=MyUA"
-
-  # Paths-only output
-  {APP_NAME} -p http
-
-  # Exact word match (AND, optional OR)
-  {APP_NAME} -x "ftp brute OR http"
-  {APP_NAME} -x --name-only --case-sensitive "ftp-anon"
-
-  # Save output
-  {APP_NAME} http --out results.json --format json
-
-  # Debug index stats
-  {APP_NAME} --verbose http
 """,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -1073,7 +960,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("-A", "--exclude-authors", help="Exclude authors (comma-separated)")
     p.add_argument("-s", "--service", help="Filter by service hints (comma-separated, e.g., http,ssl)")
     p.add_argument("-P", "--port", help="Filter by port hints (comma-separated, e.g., 80,443)")
-    p.add_argument("-p", "--paths-only", action="store_true", help="Print only file paths")
+    p.add_argument("-p", "--paths-only", action="store_true", help="Print only file paths (no headers)")
     p.add_argument("--deps", action="store_true", help="Show script dependencies instead of full details")
     p.add_argument("-d", "--dirs", help="Additional directories to scan (OS-path-separated)")
     p.add_argument("--script-args", help="Arguments to pass to --script-args when using --run/--exec")
@@ -1087,10 +974,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--quiet", action="store_true", help="Suppress status messages")
     p.add_argument("--name-only", action="store_true", help="Limit matching to script names only")
     p.add_argument("--case-sensitive", action="store_true", help="Make matching case-sensitive (affects -x, terms, and regex)")
-    p.add_argument("--verbose", action="store_true", help="Print debug info (index stats, parsed metadata)")
+    p.add_argument("-v", "--verbose", action="store_true", help="Print debug info and show full, untruncated script descriptions")
     p.add_argument("--version", action="version", version=f"%(prog)s v{VERSION}")
 
-    # If run with no arguments, print usage and a helpful tip.
     is_no_args_run = (argv is None and len(sys.argv) == 1) or (argv is not None and not argv)
     if is_no_args_run:
         p.print_usage(sys.stderr)
@@ -1099,85 +985,61 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     args = p.parse_args(argv)
 
-    # Argument validation for dependent arguments
     if (args.ports or args.script_args) and not (args.run or args.exec):
         misused_arg = "'--ports'" if args.ports else "'--script-args'"
-        if args.ports and args.script_args:
-            misused_arg = "'--ports' and '--script-args'"
+        if args.ports and args.script_args: misused_arg = "'--ports' and '--script-args'"
         p.print_usage(sys.stderr)
         print(f"\n[!] Argument Error: {misused_arg} can only be used with --run or --exec.", file=sys.stderr)
         return 2
 
-    # Normalize output format & color
     out_format = getattr(args, "format", "table").lower()
-    if getattr(args, "no_color", False):
-        args.color = "never"
-    elif args.color == "auto" and os.environ.get("NO_COLOR"):
-        args.color = "never"
+    if getattr(args, "no_color", False): args.color = "never"
+    elif args.color == "auto" and os.environ.get("NO_COLOR"): args.color = "never"
 
-    # Load config
     config = load_config()
     config_dirs = config.get("dirs", [])
     config_format = config.get("format", out_format)
-    if config_format in ["table", "json", "yaml", "ndjson", "csv", "tsv", "xml"]:
-        out_format = config_format
+    if config_format in ["table", "json", "yaml", "ndjson", "csv", "tsv", "xml"]: out_format = config_format
 
-    extra_dirs: List[str] = []
-    if args.dirs:
-        extra_dirs = [d for d in args.dirs.split(os.pathsep) if d.strip()]
-
+    extra_dirs = [d for d in args.dirs.split(os.pathsep) if d.strip()] if args.dirs else []
     idx = ensure_index(update=args.update, extra_dirs=extra_dirs, config_dirs=config_dirs)
 
-    # If the action was just to update the index, we are done.
     if args.update:
-        if not args.quiet:
-            print(f"[+] Index successfully updated. Found {len(idx.get('scripts', {}))} scripts.", file=sys.stderr)
+        if not args.quiet: print(f"[+] Index successfully updated. Found {len(idx.get('scripts', {}))} scripts.", file=sys.stderr)
         return 0
 
     if args.verbose:
-        scripts = idx.get("scripts", {})
-        dirs = idx.get("_dirs", [])
+        scripts, dirs = idx.get("scripts", {}), idx.get("_dirs", [])
         print(f"[+] Index: {len(scripts)} scripts, {len(dirs)} dirs", file=sys.stderr)
         print(f"[+] Cache: {INDEX_PATH}", file=sys.stderr)
 
     if args.show:
         path = open_script(idx, args.show)
         if not path or not path.exists():
-            print(f"[!] Could not find script: {args.show}", file=sys.stderr)
-            return 1
+            print(f"[!] Could not find script: {args.show}", file=sys.stderr); return 1
         content = path.read_text(encoding="utf-8", errors="replace")
-        if _should_color(args.color):
-            content = highlight_lua(content)
-        write_output(content, args.out, args.append, args.quiet)
-        return 0
+        if _should_color(args.color): content = highlight_lua(content)
+        write_output(content, args.out, args.append, args.quiet); return 0
 
     if args.copy:
         path = open_script(idx, args.copy)
         if not path or not path.exists():
-            print(f"[!] Could not find script: {args.copy}", file=sys.stderr)
-            return 1
+            print(f"[!] Could not find script: {args.copy}", file=sys.stderr); return 1
         dst = Path.cwd() / path.name
-        if dst.exists():
-            print(f"[!] Destination already exists: {dst}", file=sys.stderr)
-            return 1
+        if dst.exists(): print(f"[!] Destination already exists: {dst}", file=sys.stderr); return 1
         shutil.copy2(path, dst)
-        if not args.quiet:
-            print(f"[+] Copied to {dst}", file=sys.stderr)
+        if not args.quiet: print(f"[+] Copied to {dst}", file=sys.stderr)
         return 0
 
     if args.diff:
-        script1_id, script2_id = args.diff[0], args.diff[1]
-        path1 = open_script(idx, script1_id)
+        path1 = open_script(idx, args.diff[0])
         if not path1 or not path1.exists():
-            print(f"[!] Could not find first script: {script1_id}", file=sys.stderr)
-            return 1
-        path2 = open_script(idx, script2_id)
+            print(f"[!] Could not find first script: {args.diff[0]}", file=sys.stderr); return 1
+        path2 = open_script(idx, args.diff[1])
         if not path2 or not path2.exists():
-            print(f"[!] Could not find second script: {script2_id}", file=sys.stderr)
-            return 1
+            print(f"[!] Could not find second script: {args.diff[1]}", file=sys.stderr); return 1
         diff = diff_scripts(path1, path2, color_opt=args.color)
-        write_output(diff, args.out, args.append, args.quiet)
-        return 0
+        write_output(diff, args.out, args.append, args.quiet); return 0
 
     scripts: Dict[str, Dict] = idx["scripts"]
 
@@ -1198,8 +1060,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             regex = re.compile(args.regex, 0 if args.case_sensitive else re.IGNORECASE)
         except re.error as e:
-            print(f"[!] Bad regex: {e}", file=sys.stderr)
-            return 2
+            print(f"[!] Bad regex: {e}", file=sys.stderr); return 2
 
     category_filter = [s.strip().lower() for s in args.categories.split(",")] if args.categories else None
     exclude_categories = [s.strip().lower() for s in args.exclude_categories.split(",")] if args.exclude_categories else None
@@ -1211,8 +1072,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.run or args.exec:
         if not any([args.query, args.regex, args.categories, args.authors, args.service, args.port]):
             category_filter = ["default"]
-            if not args.quiet:
-                print("[i] No search terms or filters; defaulting to category 'default'", file=sys.stderr)
+            if not args.quiet: print("[i] No search terms or filters; defaulting to category 'default'", file=sys.stderr)
 
     matches_list = []
     for meta in scripts.values():
@@ -1222,32 +1082,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             matches_list.append(meta)
 
     def rank(m: Dict) -> Tuple[int, int, str]:
-        hay_name = m["name"]
-        hay_desc = m.get("description", "")
-        hay_cats = " ".join(m.get("categories", []))
-        hay_authors = " ".join(m.get("authors", []))
-        if not args.case_sensitive:
-            hay_name_cmp = hay_name.lower()
-            hay_desc_cmp = hay_desc.lower()
-            hay_cats_cmp = hay_cats.lower()
-            hay_authors_cmp = hay_authors.lower()
-            q = query_text.lower()
-        else:
-            hay_name_cmp = hay_name
-            hay_desc_cmp = hay_desc
-            hay_cats_cmp = hay_cats
-            hay_authors_cmp = hay_authors
-            q = query_text
-        primary = 0
-        if q:
-            if hay_name_cmp.find(q) != -1:
-                primary = -3
-            elif not args.name_only and hay_desc_cmp.find(q) != -1:
-                primary = -2
-            elif not args.name_only and (hay_cats_cmp.find(q) != -1 or hay_authors_cmp.find(q) != -1):
-                primary = -1
+        q = query_text.lower() if not args.case_sensitive else query_text
+        hay_name = m["name"].lower() if not args.case_sensitive else m["name"]
+        primary = -3 if q and q in hay_name else 0
         secondary = m.get("updated_ts", 0) if args.sort_by == "updated" else 0
-        tertiary = hay_name.lower()
+        tertiary = m["name"].lower()
         return (primary, -int(secondary), tertiary)
 
     if args.sort_by == "category":
@@ -1256,50 +1095,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         matches_list.sort(key=rank)
 
     if args.run or args.exec:
-        if not matches_list:
-            print("[!] No matching scripts to run.", file=sys.stderr)
-            return 1
+        if not matches_list: print("[!] No matching scripts to run.", file=sys.stderr); return 1
         user_ports = _parse_ports_arg(args.ports) if args.ports else None
         if user_ports:
             narrowed = [m for m in matches_list if _script_matches_ports(m, user_ports)]
-            if narrowed:
-                matches_list = narrowed
+            if narrowed: matches_list = narrowed
         
         target = args.run or args.exec
-        # This regex is a reasonable check for valid hostnames/IPs and prevents shell metacharacters.
         if not re.match(r"^[a-zA-Z0-9\.\-:_/]+$", target):
-            print(f"[!] Error: Invalid or unsafe target specified: '{target}'. Target contains disallowed characters.", file=sys.stderr)
-            return 1
+            print(f"[!] Error: Invalid or unsafe target specified: '{target}'.", file=sys.stderr); return 1
             
         cmd_list = build_nmap_command(matches_list, target, args.script_args, args.ports)
         if args.run:
-            cmd_str = shlex.join(cmd_list)
-            write_output(cmd_str, args.out, args.append, args.quiet)
-            return 0
+            write_output(shlex.join(cmd_list), args.out, args.append, args.quiet); return 0
         else:
             try:
                 result = subprocess.run(cmd_list, shell=False, capture_output=True, text=True, check=False)
-                output = result.stdout + result.stderr
-                write_output(output, args.out, args.append, args.quiet)
+                write_output(result.stdout + result.stderr, args.out, args.append, args.quiet)
                 return result.returncode
             except FileNotFoundError:
-                print("[!] Error: 'nmap' command not found. Is it in your system's PATH?", file=sys.stderr)
-                return 1
+                print("[!] Error: 'nmap' command not found. Is it in your system's PATH?", file=sys.stderr); return 1
             except Exception as e:
-                print(f"[!] Failed to execute: {e}", file=sys.stderr)
-                return 1
+                print(f"[!] Failed to execute: {e}", file=sys.stderr); return 1
 
     query_terms = re.findall(r"\S+", query_text) if query_text else []
-    if args.categories:
-        query_terms += [t.strip() for t in args.categories.split(",") if t.strip()]
-    if args.authors:
-        query_terms += [t.strip() for t in args.authors.split(",") if t.strip()]
-    if args.service:
-        query_terms += [t.strip() for t in args.service.split(",") if t.strip()]
+    if args.categories: query_terms.extend([t.strip() for t in args.categories.split(",") if t.strip()])
+    if args.authors: query_terms.extend([t.strip() for t in args.authors.split(",") if t.strip()])
+    if args.service: query_terms.extend([t.strip() for t in args.service.split(",") if t.strip()])
     terms_re = _compile_terms_regex(query_terms, case_sensitive=args.case_sensitive)
 
     out_text = render_results(matches_list, args.paths_only, args.deps,
-                             color_opt=args.color, terms_regex=terms_re, regex=regex, out_format=out_format)
+                             color_opt=args.color, terms_regex=terms_re, regex=regex, 
+                             out_format=out_format, verbose=args.verbose)
     write_output(out_text, args.out, args.append, args.quiet)
     return 0
 
