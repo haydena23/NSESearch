@@ -55,7 +55,8 @@
 
 3.  **Create a symbolic link** for easy access from anywhere (recommended):
     ```bash
-    sudo ln -s "$(pwd)/nsesearch.py" /usr/local/bin/nsesearch
+    mkdir -p ~/.local/bin
+    ln -s "$(pwd)/nsesearch.py" ~/.local/bin/nsesearch
     ```
     Now you can just run `nsesearch` instead of `./nsesearch.py`.
 
