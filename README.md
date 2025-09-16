@@ -40,7 +40,7 @@
 
 ## Installation
 
-`nsesearch.py` is a single script and requires only Python 3.6+.
+`nsesearch.py` is a single script and requires only Python 3.8+.
 
 1.  **Clone the repository:**
     ```bash
