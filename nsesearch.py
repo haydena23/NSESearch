@@ -168,8 +168,16 @@ def _compile_terms_regex(terms: List[str], *, case_sensitive: bool = False) -> O
     terms = [t for t in (terms or []) if t]
     if not terms:
         return None
-    uniq = sorted(set(t.lower() for t in terms if not case_sensitive), key=lambda s: (-len(s), s))
-    escaped = [re.escape(t) for t in uniq]
+    
+    uniq_lower = sorted(set(t.lower() for t in terms if not case_sensitive), key=lambda s: (-len(s), s))
+    escaped = []
+    for t in uniq_lower:
+        if t in ('http', 'https'):
+            # Special regex for http/https to avoid matching URLs
+            escaped.append(r'(?<!\w)' + re.escape(t) + r'(?!://)(?!\w)')
+        else:
+            escaped.append(r'(?<!\w)' + re.escape(t) + r'(?!\w)')
+
     flags = 0 if case_sensitive else re.IGNORECASE
     try:
         return re.compile("(" + "|".join(escaped) + ")", flags)
@@ -494,9 +502,19 @@ def matches(meta: Dict, query: str, regex: Optional[re.Pattern], exact: bool,
                 if exact:
                     if term_use in hay_tokens:
                         term_found = True
-                else:  # substring match
-                    if term_use in hay_use:
+                else:  # <<<< SURGICAL FIX START >>>>
+                    pattern = ''
+                    # If the term is http or https, add a negative lookahead to exclude URLs
+                    if term_use in ('http', 'https'):
+                        # Match 'http' or 'https' but NOT if it's followed by '://'
+                        pattern = r'(?<!\w)' + re.escape(term_use) + r'(?!://)(?!\w)'
+                    else:
+                        # For all other terms, use the standard whole-word match
+                        pattern = r'(?<!\w)' + re.escape(term_use) + r'(?!\w)'
+                    
+                    if re.search(pattern, hay_use):
                         term_found = True
+                # <<<< SURGICAL FIX END >>>>
                 
                 if not term_found:
                     group_match = False
