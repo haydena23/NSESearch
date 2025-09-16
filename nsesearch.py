@@ -656,38 +656,33 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
         return "\n".join(lines)
 
     if fmt in ("yaml", "yml"):
-        def to_yaml_obj(o, indent=0):
-            sp = "  " * indent
-            if isinstance(o, dict):
-                lines = []
-                for k, v in o.items():
-                    if isinstance(v, (dict, list)):
-                        lines.append(f"{sp}{k}:")
-                        lines.append(to_yaml_obj(v, indent+1))
-                    else:
-                        vs = str(v)
-                        if "\n" in vs:
-                            vs = f"|-\n{sp}  {vs.replace('\n', f'\n{sp}  ')}"
-                        elif any(ch in vs for ch in [":", "-", "{", "}", "[", "]", "#", "&", "*", "!", ">", "|", "'", '"', "%", "@", "`"]):
-                            vs = json.dumps(vs, ensure_ascii=False)
-                        lines.append(f"{sp}{k}: {vs}")
-                return "\n".join(lines)
-            if isinstance(o, list):
-                out = []
-                for v in o:
-                    if isinstance(v, (dict, list)):
-                        out.append(f"{sp}-")
-                        out.append(to_yaml_obj(v, indent+1))
-                    else:
-                        vs = str(v)
-                        if "\n" in vs:
-                            vs = f"|-\n{sp}  {vs.replace('\n', f'\n{sp}  ')}"
-                        elif any(ch in vs for ch in [":", "-", "{", "}", "[", "]", "#", "&", "*", "!", ">", "|", "'", '"', "%", "@", "`"]):
-                            vs = json.dumps(vs, ensure_ascii=False)
-                        out.append(f"{sp}- {vs}")
-                return "\n".join(out)
-            return f"{sp}{o}"
-        text = to_yaml_obj(objs)
+        output_lines = []
+        for obj in objs:
+            item_lines = []
+            for i, (key, value) in enumerate(obj.items()):
+                value_str = str(value)
+                line = ""
+                # Use literal block scalar `|` for multiline strings for readability
+                if "\n" in value_str:
+                    # Indent the multiline value block correctly under its key
+                    indented_value = textwrap.indent(value_str, "    ")
+                    line = f"  {key}:\n{indented_value}"
+                    # A better style for multiline is using the literal block scalar
+                    line = f"  {key}: |-\n{textwrap.indent(value_str, '    ')}"
+                else:
+                    # For single-line values, use JSON dumps to safely quote special characters
+                    final_value = json.dumps(value_str)
+                    line = f"  {key}: {final_value}"
+
+                # The very first line of the object representation gets the list marker `-`
+                if i == 0:
+                    # Replace the first two spaces of indentation with "- "
+                    line = f"- {line.lstrip()}"
+                
+                item_lines.append(line)
+            output_lines.extend(item_lines)
+            
+        text = "\n".join(output_lines)
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
 
     if fmt in ("csv", "tsv"):
