@@ -737,8 +737,7 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
 def _format_paths(paths: List[str], fmt: str, color_opt: str, terms_re: Optional[re.Pattern]) -> str:
     fmt = (fmt or "table").lower()
     if fmt == "table":
-        rows = [[p] for p in paths]
-        return tabulate(rows, headers=["Path"])
+        return "\n".join(paths)
     if fmt == "json":
         text = json.dumps(paths, indent=2, ensure_ascii=False)
         return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
