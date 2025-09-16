@@ -14,7 +14,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/haydena23/nsesearch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![GitHub stars](https://img.shields.io/github/stars/haydena23/nsesearch.svg?style=social&label=Star&maxAge=2592000)](https://github.com/haydena23/nsesearch/stargazers)
 
 `nsesearch` is a powerful command-line utility that indexes all Nmap Scripting Engine (NSE) scripts on your local machine, allowing you to find the exact script you need in seconds. No more browsing the web. Search by name, category, description, author, port hints, and more, then immediately view, diff, or generate an `nmap` command to run your findings.
