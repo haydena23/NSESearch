@@ -592,13 +592,13 @@ def _wrap_plain(text: str, width: int) -> List[str]:
     text = text or ""
     return textwrap.wrap(text, width=width, replace_whitespace=False, drop_whitespace=False, break_long_words=True, break_on_hyphens=False) or [""]
 
-def _render_table_4col(rows: List[List[str]], headers: List[str], max_width: int, with_separators: bool = True) -> str:
+def _render_table_4col(rows: List[List[str]], headers: List[str], max_width: int, with_separators: bool = True, color_opt: str = "auto", terms_re: Optional[re.Pattern] = None, regex: Optional[re.Pattern] = None) -> str:
     mins = [14, 14, 24, 20]
     caps = [32, 32, 9999, 60]
     total_min_width = sum(mins) + (2 * (len(mins) - 1))
     
     if max_width < total_min_width:
-        return _render_table_generic(rows, headers, max_width)
+        return _render_table_generic(rows, headers, max_width, color_opt=color_opt, terms_re=terms_re, regex=regex)
 
     widths = _distribute_proportional_widths(4, max_width, mins=mins, caps=caps)
     def fmt_line(parts: List[str]) -> str:
@@ -606,6 +606,7 @@ def _render_table_4col(rows: List[List[str]], headers: List[str], max_width: int
     out: List[str] = []
     out.append(fmt_line(headers))
     out.append(fmt_line(["-"*w for w in widths]))
+    color_on = _should_color(color_opt)
     for r in rows:
         script, cats, desc, path = r[0], r[1], r[2], r[3]
         cols = [
@@ -616,14 +617,26 @@ def _render_table_4col(rows: List[List[str]], headers: List[str], max_width: int
         ]
         height = max(len(c) for c in cols)
         for i in range(height):
-            out.append(fmt_line([cols[c][i] if i < len(cols[c]) else "" for c in range(4)]))
+            line_parts = [cols[c][i] if i < len(cols[c]) else "" for c in range(4)]
+            if color_on:
+                highlighted_parts = []
+                for part in line_parts:
+                    h_part = part
+                    if terms_re:
+                        h_part = highlight_text(h_part, terms_re, True)
+                    if regex:
+                        h_part = highlight_text(h_part, regex, True)
+                    highlighted_parts.append(h_part)
+                out.append(fmt_line(highlighted_parts))
+            else:
+                out.append(fmt_line(line_parts))
         if with_separators and height > 1:
             out.append(fmt_line(["-"*w for w in widths]))
     if with_separators and out and out[-1].strip().strip("-") == "":
         out.pop()
     return "\n".join(out)
 
-def _render_table_generic(rows: List[List[str]], headers: List[str], max_width: int) -> str:
+def _render_table_generic(rows: List[List[str]], headers: List[str], max_width: int, color_opt: str = "auto", terms_re: Optional[re.Pattern] = None, regex: Optional[re.Pattern] = None) -> str:
     n = len(headers)
     widths = _distribute_equal_widths(n, max_width)
     def fmt_line(parts: List[str]) -> str:
@@ -631,45 +644,66 @@ def _render_table_generic(rows: List[List[str]], headers: List[str], max_width: 
     out: List[str] = []
     out.append(fmt_line(headers))
     out.append(fmt_line(["-"*w for w in widths]))
+    color_on = _should_color(color_opt)
     for r in rows:
         wrapped_cols = [_wrap_plain(r[i], widths[i]) for i in range(n)]
         height = max(len(col) for col in wrapped_cols)
         for i in range(height):
-            out.append(fmt_line([wrapped_cols[c][i] if i < len(wrapped_cols[c]) else "" for c in range(n)]))
+            line_parts = [wrapped_cols[c][i] if i < len(wrapped_cols[c]) else "" for c in range(n)]
+            if color_on:
+                highlighted_parts = []
+                for part in line_parts:
+                    h_part = part
+                    if terms_re:
+                        h_part = highlight_text(h_part, terms_re, True)
+                    if regex:
+                        h_part = highlight_text(h_part, regex, True)
+                    highlighted_parts.append(h_part)
+                out.append(fmt_line(highlighted_parts))
+            else:
+                out.append(fmt_line(line_parts))
         if height > 1:
             out.append(fmt_line(["-"*w for w in widths]))
     if out and out[-1].strip().strip("-") == "":
         out.pop()
     return "\n".join(out)
 
-def tabulate(rows: List[List[str]], headers: List[str]) -> str:
+def tabulate(rows: List[List[str]], headers: List[str], color_opt: str = "auto", terms_re: Optional[re.Pattern] = None, regex: Optional[re.Pattern] = None) -> str:
     try:
         max_width = shutil.get_terminal_size(fallback=(120, 20)).columns
     except Exception:
         max_width = 120
     
     if len(headers) == 4:
-        return _render_table_4col(rows, headers, max_width, with_separators=True)
+        return _render_table_4col(rows, headers, max_width, with_separators=True, color_opt=color_opt, terms_re=terms_re, regex=regex)
     else:
-        return _render_table_generic(rows, headers, max_width)
+        return _render_table_generic(rows, headers, max_width, color_opt=color_opt, terms_re=terms_re, regex=regex)
 
 # -------- Structured output helpers --------
 
-def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt: str, terms_re: Optional[re.Pattern]) -> str:
+def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt: str, terms_re: Optional[re.Pattern], regex: Optional[re.Pattern] = None) -> str:
     fmt = (fmt or "table").lower()
     if fmt == "table":
-        return tabulate(rows, headers=headers)
+        return tabulate(rows, headers=headers, color_opt=color_opt, terms_re=terms_re, regex=regex)
 
     objs = [{headers[i]: (row[i] if i < len(row) else "") for i in range(len(headers))} for row in rows]
 
     if fmt == "json":
         text = json.dumps(objs, indent=2, ensure_ascii=False)
-        return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
+        if _should_color(color_opt):
+            if terms_re: text = highlight_text(text, terms_re, True)
+            if regex: text = highlight_text(text, regex, True)
+        return text
 
     if fmt == "ndjson":
         lines = [json.dumps(o, ensure_ascii=False) for o in objs]
-        if color_opt == "always" and terms_re:
-            lines = [highlight_text(line, terms_re, True) for line in lines]
+        if _should_color(color_opt):
+            highlighted_lines = []
+            for line in lines:
+                if terms_re: line = highlight_text(line, terms_re, True)
+                if regex: line = highlight_text(line, regex, True)
+                highlighted_lines.append(line)
+            lines = highlighted_lines
         return "\n".join(lines)
 
     if fmt in ("yaml", "yml"):
@@ -689,7 +723,10 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
                 item_lines.append(line)
             output_lines.extend(item_lines)
         text = "\n".join(output_lines)
-        return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
+        if _should_color(color_opt):
+            if terms_re: text = highlight_text(text, terms_re, True)
+            if regex: text = highlight_text(text, regex, True)
+        return text
 
     if fmt in ("csv", "tsv"):
         import io, csv
@@ -700,7 +737,10 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
         for r in rows:
             w.writerow([r[i] if i < len(r) else "" for i in range(len(headers))])
         text = sio.getvalue().rstrip("\n")
-        return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
+        if _should_color(color_opt):
+            if terms_re: text = highlight_text(text, terms_re, True)
+            if regex: text = highlight_text(text, regex, True)
+        return text
 
     if fmt == "xml":
         from xml.etree.ElementTree import Element, SubElement, tostring
@@ -715,9 +755,12 @@ def _format_rows(rows: List[List[str]], headers: List[str], fmt: str, color_opt:
         reparsed = minidom.parseString(rough_string)
         pretty_xml = reparsed.toprettyxml(indent="  ")
         text = "\n".join([line for line in pretty_xml.split('\n') if line.strip()])
-        return highlight_text(text, terms_re, _should_color(color_opt)) if color_opt == "always" else text
+        if _should_color(color_opt):
+            if terms_re: text = highlight_text(text, terms_re, True)
+            if regex: text = highlight_text(text, regex, True)
+        return text
 
-    return tabulate(rows, headers=headers)
+    return tabulate(rows, headers=headers, color_opt=color_opt, terms_re=terms_re, regex=regex)
 
 def _format_paths(paths: List[str], fmt: str, color_opt: str, terms_re: Optional[re.Pattern]) -> str:
     fmt = (fmt or "table").lower()
@@ -847,7 +890,7 @@ def render_results(matches_list: List[Dict], paths_only: bool, deps_only: bool, 
     out_format = (out_format or "table").lower()
     if deps_only:
         rows = [[m["name"], ",".join(m.get("dependencies", []) or []) or "-"] for m in matches_list]
-        text = _format_rows(rows, ["Script", "Dependencies"], out_format, color_opt, terms_regex)
+        text = _format_rows(rows, ["Script", "Dependencies"], out_format, color_opt, terms_regex, regex)
         return text
     if paths_only:
         paths = [m["path"] for m in matches_list]
@@ -865,15 +908,7 @@ def render_results(matches_list: List[Dict], paths_only: bool, deps_only: bool, 
 
         rows.append([name, cats, desc, path])
 
-    if out_format == "table" and _should_color(color_opt):
-        if terms_regex:
-            for row in rows:
-                for i in range(len(row)): row[i] = highlight_text(row[i], terms_regex, True)
-        if regex:
-            for row in rows:
-                for i in range(len(row)): row[i] = highlight_text(row[i], regex, True)
-
-    return _format_rows(rows, ["Script", "Categories", "Description", "Path"], out_format, color_opt, terms_regex)
+    return _format_rows(rows, ["Script", "Categories", "Description", "Path"], out_format, color_opt, terms_regex, regex)
 
 def open_script(idx: Dict, name_or_path: str) -> Optional[Path]:
     p = Path(name_or_path)
